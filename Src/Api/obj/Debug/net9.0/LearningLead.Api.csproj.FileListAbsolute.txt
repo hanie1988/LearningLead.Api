@@ -146,6 +146,7 @@
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/LearningLead.Api.csproj.CoreCompileInputs.cache
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/LearningLead.Api.MvcApplicationPartsAssemblyInfo.cs
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/LearningLead.Api.MvcApplicationPartsAssemblyInfo.cache
+/Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/LearningLead.Api.sourcelink.json
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/rjimswa.dswa.cache.json
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/rjsmrazor.dswa.cache.json
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/rjsmcshtml.dswa.cache.json
