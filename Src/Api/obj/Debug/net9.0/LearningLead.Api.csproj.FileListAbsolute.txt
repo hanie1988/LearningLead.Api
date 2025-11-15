@@ -161,3 +161,4 @@
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/LearningLead.Api.pdb
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/LearningLead.Api.genruntimeconfig.cache
 /Users/haniehqasemi/LearningLead.Api/Src/Api/obj/Debug/net9.0/ref/LearningLead.Api.dll
+/Users/haniehqasemi/LearningLead.Api/Src/Api/bin/Debug/net9.0/Microsoft.AspNetCore.Authentication.JwtBearer.dll

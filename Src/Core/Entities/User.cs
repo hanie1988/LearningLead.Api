@@ -4,9 +4,9 @@ public sealed class User(string email, string passwordHash, string role = "Custo
 {
     public int Id { get; set; }
 
-    public required string Email { get; set; } = email;
+    public string Email { get; set; } = email;
 
-    public required string PasswordHash { get; set; } = passwordHash;
+    public string PasswordHash { get; set; } = passwordHash;
 
-    public required string Role { get; set; } = role;
+    public string Role { get; set; } = role;
 }

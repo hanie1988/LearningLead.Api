@@ -1,10 +1,11 @@
 namespace Infrastructure.Repositories;
 
 using Core.Entities;
+using Core.Interfaces;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
-public sealed class EventRepository(AppDbContext db)
+public sealed class EventRepository(AppDbContext db) : IEventRepository
 {
     public async Task<Event> AddAsync(Event ev)
     {

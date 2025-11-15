@@ -1,27 +1,16 @@
 namespace Api.Controllers;
 
 using Application.Events;
-using Core.Entities;
-using Infrastructure.Repositories;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("api/events")]
-public sealed class EventController(EventRepository repo) : ControllerBase
+public sealed class EventController(EventService service) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Create(EventCreateDto dto)
     {
-        var ev = new Event
-        {
-            Title = dto.Title,
-            Description = dto.Description,
-            EventDate = dto.EventDate,
-            Capacity = dto.Capacity,
-            Price = dto.Price
-        };
-
-        var created = await repo.AddAsync(ev);
+        var created = await service.CreateAsync(dto);
 
         return Ok(new EventResponseDto(
             created.Id,
@@ -35,19 +24,18 @@ public sealed class EventController(EventRepository repo) : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
-        => Ok(await repo.GetAllAsync());
+        => Ok(await service.GetAllAsync());
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var ev = await repo.GetByIdAsync(id);
+        var ev = await service.GetByIdAsync(id);
         return ev is null ? NotFound() : Ok(ev);
     }
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var deleted = await repo.DeleteAsync(id);
-        return deleted ? Ok() : NotFound();
+        return await service.DeleteAsync(id) ? Ok() : NotFound();
     }
 }
