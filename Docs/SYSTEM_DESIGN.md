@@ -29,6 +29,11 @@ The solution follows the classic Clean Architecture circle:
 
 # 📁 2. Folder Structure
 
+•	Core (domain)
+•	Application (use cases)
+•	Infrastructure (EF, SQL)
+•	API (presentation)
+
 /Src
 ├─ Api                      → Presentation layer (Controllers, Endpoints)
 │  ├─ Controllers

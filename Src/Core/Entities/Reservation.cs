@@ -11,6 +11,7 @@ public sealed class Reservation
     public required DateTime CheckIn { get; set; }
 
     public required DateTime CheckOut { get; set; }
-
+    
+    public bool IsCancelled { get; set; }
     public Room? Room { get; set; }
 }

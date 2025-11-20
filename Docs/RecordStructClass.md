@@ -96,3 +96,27 @@ Because entities:
 - Must be reference types  
 
 ---
+
+# 🔥 Which one should you use?
+
+✔ For APIs, commands, queries, DTOs, responses
+
+→ Use record (reference type)
+
+✔ For small mathematical objects
+
+(e.g., coordinates, RGB colors)
+→ Use record struct
+
+✔ For EF Core entities
+
+→ Never use record
+Use class because EF needs mutable reference objects.
+
+## 📌 DTO Selection Summary (C# 12 Best Practice)
+
+| DTO Type          | Recommended Type            | Reason |
+|-------------------|-----------------------------|--------|
+| **Create DTO**    | `sealed record`             | Reference type → works best with model binding & validation. Allows normalization (trim, lowercase). Sealed for safety and performance. |
+| **Update DTO**    | `sealed record`             | Same reasons as Create DTO. Update operations often need partial binding + validation. |
+| **Response DTO**  | `readonly record struct`    | Immutable, lightweight, high-performance value type. Ideal for returning pure data without mutation. Reduces GC pressure. |

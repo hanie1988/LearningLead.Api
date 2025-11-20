@@ -8,7 +8,7 @@ public sealed record EventCreateDto(
     decimal Price
 );
 
-public sealed record EventResponseDto(
+public readonly record struct EventResponseDto(
     int Id,
     string Title,
     string Description,

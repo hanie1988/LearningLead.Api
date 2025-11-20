@@ -2,13 +2,16 @@ namespace Api.Controllers;
 
 using Application.Hotels;
 using Core.Entities;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
 [Route("api/hotels")]
+[Authorize]
 public sealed class HotelController(HotelService service) : ControllerBase
 {
     [HttpPost]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> Create(HotelCreateDto dto)
     {
         var created = await service.CreateAsync(dto);
@@ -22,6 +25,7 @@ public sealed class HotelController(HotelService service) : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> GetAll()
         => Ok(await service.GetAllAsync());
 
@@ -33,6 +37,7 @@ public sealed class HotelController(HotelService service) : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> Delete(int id)
     {
         var deleted = await service.DeleteAsync(id);

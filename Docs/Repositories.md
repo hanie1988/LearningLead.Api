@@ -1,0 +1,1 @@
+“Repository encapsulates all EF Core logic: querying, filtering, saving, updating, and deleting entities through DbContext.”

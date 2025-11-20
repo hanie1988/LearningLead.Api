@@ -1,0 +1,1 @@
+“Service coordinates business rules, applies domain logic, and uses repositories to access data. No direct DbContext.”
