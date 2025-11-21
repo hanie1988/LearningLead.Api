@@ -7,7 +7,7 @@ public sealed record ReservationCreateDto(
     DateTime CheckOut
 );
 
-public sealed readonly record struct ReservationResponseDto(
+public readonly record struct ReservationResponseDto(
     int Id,
     int RoomId,
     int UserId,

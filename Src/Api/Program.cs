@@ -6,6 +6,7 @@ using Application.Events;
 using Application.Hotels;
 using Application.Users;
 using Application.Rooms;
+using Application.Reservations.Validators;
 using Application.Reservations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
@@ -15,6 +16,7 @@ using Microsoft.OpenApi.Models;
 using System.Security.Claims;
 using Serilog;
 using Api.Middlewares;
+using FluentValidation;
 
 Log.Logger = new LoggerConfiguration()
     .Enrich.FromLogContext()
@@ -29,8 +31,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseSerilog();
 Log.Information("Application starting up...");
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -38,7 +38,6 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "API", Version = "v1" });
 
-    // 🔥 Add JWT auth to Swagger
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -69,6 +68,7 @@ builder.Services.AddDbContext<AppDbContext>(options => {
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"));
 });
 
+builder.Services.AddValidatorsFromAssembly(typeof(ReservationCreateDtoValidator).Assembly);
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IHotelRepository, HotelRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
@@ -81,7 +81,6 @@ builder.Services.AddScoped<RoomService>();
 builder.Services.AddScoped<ReservationService>();
 builder.Services.AddScoped<JwtService>();
 
-// JWT Authentication
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var key = Encoding.UTF8.GetBytes(jwtSection["Key"]!);
 
@@ -109,14 +108,14 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 
 app.MapOpenApi();
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ErrorHandlingMiddleware>();
+app.UseMiddleware<ValidationMiddleware>();
 app.UseSerilogRequestLogging();
 
 app.UseHttpsRedirection();

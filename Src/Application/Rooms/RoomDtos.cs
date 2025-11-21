@@ -7,7 +7,7 @@ public sealed record RoomCreateDto(
     decimal PricePerNight
 );
 
-public sealed readonly record struct RoomResponseDto(
+public readonly record struct RoomResponseDto(
     int Id,
     int HotelId,
     string RoomNumber,

@@ -24,6 +24,11 @@ public sealed class ReservationController(ReservationService service) : Controll
             created.CheckOut
         );
 
+        // return Ok(new
+        // {
+        //     Success = true,
+        //     Data = new { ReservationId = id }
+        // });
         return Ok(response);
     }
 

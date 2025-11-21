@@ -1,6 +1,7 @@
 namespace Application.Reservations;
 
 using Core.Entities;
+using Core.Exceptions;
 using Core.Interfaces;
 using Application.Common;
 
@@ -8,11 +9,18 @@ public sealed class ReservationService(IReservationRepository repo)
 {
     public async Task<Reservation> CreateReservationAsync(ReservationCreateDto dto)
     {
-        //check is canceled
+        if (dto.CheckIn >= dto.CheckOut)
+            throw new InvalidDateRangeException();
+
+        // var room = await _roomRepository.GetByIdAsync(dto.RoomId);
+
+        // if (room is null)
+        //     throw new RoomNotFoundException(dto.RoomId);
+
         var available = await repo.RoomIsAvailable(dto.RoomId, dto.CheckIn, dto.CheckOut);
 
         if (!available)
-            throw new AppException("Room is not available for the selected dates.", 409);
+            throw new RoomNotAvailableException();
 
         var reservation = new Reservation
         {
