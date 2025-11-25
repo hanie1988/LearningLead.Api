@@ -29,4 +29,6 @@ public sealed class HotelRepository(AppDbContext db): IHotelRepository
         await db.SaveChangesAsync();
         return true;
     }
+
+    public IQueryable<Hotel> Query() => db.Hotels.AsQueryable();
 }

@@ -8,4 +8,5 @@ public interface IHotelRepository
     Task<List<Hotel>> GetAllAsync();
     Task<Hotel?> GetByIdAsync(int id);
     Task<bool> DeleteAsync(int id);
+    IQueryable<Hotel> Query();
 }

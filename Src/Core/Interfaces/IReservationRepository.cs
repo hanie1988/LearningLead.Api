@@ -9,4 +9,5 @@ public interface IReservationRepository
     Task<List<Reservation>> GetReservationsByRoom(int roomId);
     Task<Reservation?> GetByIdAsync(int id);
     Task UpdateAsync(Reservation reservation);
+    IQueryable<Reservation> Query();
 }

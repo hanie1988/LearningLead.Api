@@ -16,4 +16,5 @@ public sealed class RoomRepository(AppDbContext db): IRoomRepository
 
     public async Task<List<Room>> GetByHotelAsync(int hotelId)
         => await db.Rooms.Where(r => r.HotelId == hotelId).ToListAsync();
+
 }

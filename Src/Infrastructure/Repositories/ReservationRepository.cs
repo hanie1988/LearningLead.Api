@@ -36,4 +36,6 @@ public sealed class ReservationRepository(AppDbContext db) : IReservationReposit
         await db.SaveChangesAsync();
     }
 
+    public IQueryable<Reservation> Query() => db.Reservations.AsQueryable();
+
 }
