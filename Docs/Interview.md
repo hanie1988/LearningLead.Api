@@ -199,4 +199,33 @@ I always validate with the team or stakeholders to confirm the UI makes sense be
 
 Overall, good UI comes from understanding the user’s needs and keeping the interface clear, fast, and consistent.”
 
+---
+**Q17: Tell me about a time you supported a customer or fixed a critical bug.**
+Situation: “A customer reported that new bookings weren’t showing in the admin dashboard, which was affecting their operations.”
+
+Task: “I needed to reproduce the issue, identify the root cause, and restore functionality quickly.”
+
+Action: “I reproduced the issue in a staging environment and found that an EF query was filtering bookings using only one specific status. A recent update had introduced a new status, but the query logic wasn’t updated. I corrected the filtering logic, deployed the updated API, and added logging and an automated test to prevent similar status-code issues in the future.”
+
+Result: “The fix was deployed the same day, the customer confirmed everything was working, and we received no further incidents. They appreciated the clear communication and quick resolution.”
+
+---
+Confluence
+	•	Documentation
+	•	Requirements pages
+	•	Architecture notes
+	•	Meeting notes
+	•	Product specs
+	•	Wiki for the company
+
+So:
+	•	Jira = tasks + sprints
+	•	Asana = tasks + collaboration
+	•	Confluence = documentation + knowledge base
+
+---
+Dapper is a lightweight, high-performance micro-ORM for .NET that maps SQL query results to C# objects. It doesn’t do change tracking or complex features like Entity Framework — it focuses purely on fast data access.
+
+---
+
 

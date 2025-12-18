@@ -7,7 +7,7 @@ public sealed class RoomFilter
     public decimal? MinPrice {get; init;}
     public decimal? MaxPrice {get; init;}
     public string? SortBy {get; init;}
-    public string SortDirection {get; init;}
+    public required string SortDirection {get; init;}
     public int Page {get; init;}
     public int PageSize {get; init;}
 }

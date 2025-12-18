@@ -732,6 +732,24 @@ Then EF builds SQL:
 ```
 SELECT * FROM Rooms WHERE Capacity > 2;
 ```
+📍 3) Deferred Execution — SQL runs only when needed
+
+SQL does NOT run until you call:
+	•	ToListAsync()
+	•	FirstAsync()
+	•	CountAsync()
+	•	AnyAsync()
+	•	SingleAsync()
+
+Until you call one of these, you’re just building a query.
+
+Example:
+```Csharp
+var q = db.Rooms.Where(x => x.Capacity > 1);  // no SQL
+q = q.Where(x => x.PricePerNight > 100);     // no SQL
+
+var result = await q.ToListAsync();          // SQL executes here
+```
 
 
 
