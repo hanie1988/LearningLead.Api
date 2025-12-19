@@ -166,7 +166,73 @@ Because you're stuck thinking only about UI synchronization.
 You’re missing the real performance reason.
 **Here is the real answer:**
 Even though ASP.NET Core has no SyncContext, it does have an ExecutionContext.
-ConfigureAwait(false) avoids restoring ExecutionContext + AsyncLocals + HttpContext flow, not just UI sync. That still has overhead
+ConfigureAwait(false) avoids restoring ExecutionContext + AsyncLocals + HttpContext flow, not just UI sync. That still has overhead.
+
+**AsyncLocal solves a real problem:**
+“How do I store per-request data when threads are not stable?”
+
+Used by:
+	•	ASP.NET Core (HttpContext)
+	•	Logging scopes (ILogger.BeginScope)
+	•	Correlation IDs
+	•	OpenTelemetry Activity
+	•	Security context
+	•	Culture (CurrentCulture)
+	•	EF Core diagnostics
+
+Without AsyncLocal, async code would be untraceable chaos.
+What actually happens under the hood (simplified), On await without ConfigureAwait(false)
+
+```Code
+Capture ExecutionContext
+  └─ AsyncLocal #1
+  └─ AsyncLocal #2
+  └─ HttpContext
+  └─ Logging scope
+  └─ Culture
+↓
+Async I/O
+↓
+Restore ExecutionContext
+  └─ Restore AsyncLocal values
+```
+Even though:
+	•	Threads may change
+	•	Execution is paused and resumed
+
+CurrentUser.Value is still "Alice".
+```Csharp
+static AsyncLocal<string?> CurrentUser = new();
+
+async Task HandleAsync()
+{
+    CurrentUser.Value = "Alice";
+
+    await DoWorkAsync();
+
+    Console.WriteLine(CurrentUser.Value); // "Alice"
+}
+
+async Task DoWorkAsync()
+{
+    await Task.Delay(10);
+}
+```
+You used AsyncLocal below without knowing its name.
+```Csharp
+HttpContext.User
+HttpContext.Request.Headers
+HttpContext.TraceIdentifier
+
+using (_logger.BeginScope("OrderId:{OrderId}", orderId))
+{
+    await ProcessAsync();
+}
+
+User.Identity.IsAuthenticated
+
+Thread.CurrentThread.CurrentCulture
+```
 
 ### Misconsuption
 
@@ -518,10 +584,10 @@ This is a **race condition**.
 
 ## 3️⃣ Atomic vs non-atomic operations
 
-- **Atomic** → happens as one indivisible step
+- **Atomic** → happens as one indivisible step => Cannot be split into smaller steps that others can observe in between.
 - **Non-atomic** → can be interrupted
 
-### Atomic example
+### Atomic example, [Lock vs Interlocked](real-world-lock-vs-lock-this.md)
 ```csharp
 Interlocked.Increment(ref count);
 ```
@@ -590,7 +656,7 @@ It protects **invariants**, not just variables.
 
 ## 6️⃣ Common `lock` mistakes
 
-### ❌ Locking on `this`
+### ❌ [Locking on `this`](real-world-lock-vs-lock-this.md)
 ```csharp
 lock (this) { }
 ```
@@ -765,4 +831,455 @@ Mastering synchronization turns “scary” async systems into predictable ones.
 
 ---
 
-*End of guide.*
+# ASP.NET Core: Shared State (“shared access variables”) + DI Rules (Transient vs Scoped)
+
+> Goal: explain **where shared state lives**, **why it breaks**, and **how DI lifetimes (Transient/Scoped/Singleton)** control object creation and safety.
+
+---
+
+## 0) The core mental model (don’t go too deep here)
+
+ASP.NET Core is a **multi-request, multi-threaded** server.
+
+- Many requests run at the same time.
+- A single “variable” can be shared accidentally across requests.
+- Your DI lifetimes decide **who shares what**.
+
+**Rule of thumb (coach rule):**
+- If something must be isolated per request → **Scoped**
+- If something is stateless → **Transient**
+- If something is global and thread-safe → **Singleton**
+- If you are “not sure” → default to **Scoped** for app services that touch data/context.
+
+---
+
+## 1) What “shared access variables” usually means in ASP.NET Core
+
+People say “shared variables” when they notice:
+- Data from one user appears in another user’s request
+- A counter increments unexpectedly
+- Random bugs under load (race conditions)
+
+These come from **shared state** being stored in the wrong place:
+
+### 1.1 Bad shared state sources
+1) **`static` fields / singletons holding mutable data**
+2) **Singleton services containing request-specific data**
+3) **Capturing scoped services in singletons**
+4) **Caching request data in global memory without user/request keys**
+5) **Using “instance fields” inside middleware incorrectly (rare but possible)**
+
+### 1.2 Good state sources (safe patterns)
+- Per-request state: `HttpContext.Items`, scoped services, request DTOs
+- Per-user state: distributed cache (Redis) keyed by user id, DB, cookie/session (if used)
+- Shared read-only config: `IOptions<T>` (mostly safe), immutable objects
+
+---
+
+## 2) Lifetimes: Transient vs Scoped (and where Singleton fits)
+
+### 2.1 Transient
+**Meaning:** new instance every time it’s requested from DI.
+
+- Resolve it twice in the same request → you get **two different objects**
+- Great for **stateless helpers** (formatters, calculators, validators if stateless)
+
+**Risk:** If it holds expensive resources (DB connections) or per-request state, you’ll create too many objects and/or inconsistent state.
+
+### 2.2 Scoped
+**Meaning:** one instance per **request scope**.
+
+- Resolve it many times in the same request → you get the **same object**
+- Next request → new object
+- Perfect for:
+  - `DbContext`
+  - repositories
+  - services that depend on `DbContext`
+  - anything that must behave consistently inside a single request
+
+### 2.3 Singleton (for context)
+**Meaning:** one instance for the whole application lifetime.
+
+- Shared by all requests, all users
+- Safe only if:
+  - fully stateless, or
+  - state is immutable, or
+  - state is protected with correct thread-safety (locks, concurrent collections) and you truly intend global sharing
+
+**Common trap:** “I made it singleton to be faster” → then you put mutable fields inside → race conditions.
+
+---
+
+## 3) Concrete example: Transient vs Scoped resolution behavior
+
+### 3.1 Example services
+```csharp
+public interface IRequestTracker
+{
+    Guid InstanceId { get; }
+    int Count { get; }
+    void Increment();
+}
+
+public sealed class RequestTracker : IRequestTracker
+{
+    public Guid InstanceId { get; } = Guid.NewGuid();
+    public int Count { get; private set; }
+    public void Increment() => Count++;
+}
+```
+
+### 3.2 Controller that resolves twice in one request
+```csharp
+[ApiController]
+[Route("demo")]
+public sealed class DemoController : ControllerBase
+{
+    private readonly IRequestTracker _trackerA;
+    private readonly IRequestTracker _trackerB;
+
+    public DemoController(IRequestTracker trackerA, IRequestTracker trackerB)
+    {
+        _trackerA = trackerA;
+        _trackerB = trackerB;
+    }
+
+    [HttpGet("lifetimes")]
+    public IActionResult Get()
+    {
+        _trackerA.Increment();
+        _trackerB.Increment();
+
+        return Ok(new
+        {
+            A = new { _trackerA.InstanceId, _trackerA.Count },
+            B = new { _trackerB.InstanceId, _trackerB.Count },
+            SameInstance = ReferenceEquals(_trackerA, _trackerB)
+        });
+    }
+}
+```
+
+### 3.3 Register as **Transient**
+```csharp
+builder.Services.AddTransient<IRequestTracker, RequestTracker>();
+```
+
+Expected result (same request):
+- `SameInstance` → **false**
+- `Count` for each will be `1` (each tracker is separate)
+
+### 3.4 Register as **Scoped**
+```csharp
+builder.Services.AddScoped<IRequestTracker, RequestTracker>();
+```
+
+Expected result (same request):
+- `SameInstance` → **true**
+- `Count` will be `2` (both refs point to same instance)
+
+**This is the simplest way to *prove* lifetime behavior.**
+
+---
+
+## 4) “Shared variable” bug: why singleton + mutable fields is dangerous
+
+### 4.1 The bug
+```csharp
+public interface ICurrentUserCache
+{
+    string? CurrentUserEmail { get; set; }
+}
+
+public sealed class CurrentUserCache : ICurrentUserCache
+{
+    public string? CurrentUserEmail { get; set; }
+}
+```
+
+If you register this as singleton:
+
+```csharp
+builder.Services.AddSingleton<ICurrentUserCache, CurrentUserCache>();
+```
+
+Now if request A sets `CurrentUserEmail = "a@x.com"` and request B sets it to `"b@x.com"`,
+they can overwrite each other.
+
+**Result:** user A can see user B’s data.
+
+### 4.2 Correct fix: per-request state should be scoped
+```csharp
+builder.Services.AddScoped<ICurrentUserCache, CurrentUserCache>();
+```
+
+Or better: don’t store “current user” as mutable state at all — read it from `HttpContext.User`.
+
+---
+
+## 5) DI rules you must not break (practical, not academic)
+
+### Rule #1: Don’t inject Scoped into Singleton (directly)
+**Bad:**
+```csharp
+builder.Services.AddScoped<MyDbContext>();
+builder.Services.AddSingleton<MyService>(); // depends on MyDbContext -> WRONG
+```
+
+Why it’s wrong:
+- Singleton lives forever
+- Scoped lives per request
+- You’d end up with a scoped dependency that “leaks” across requests or causes runtime errors.
+
+ASP.NET Core detects many of these and throws:
+> Cannot consume scoped service 'X' from singleton 'Y'
+
+**Fix options:**
+1) Change singleton to scoped.
+2) If singleton must remain singleton, inject `IServiceScopeFactory` and create a scope per operation (use carefully).
+
+### Rule #2: DbContext is Scoped (almost always)
+- `AddDbContext<T>()` defaults to scoped.
+- Don’t make `DbContext` singleton. It’s not thread-safe.
+
+### Rule #3: Avoid service locator anti-pattern (`IServiceProvider` everywhere)
+This is when you inject `IServiceProvider` and manually call `GetService()` in random places.
+
+**It hides dependencies and makes bugs harder to see.**
+
+Use it only for:
+- advanced factories,
+- optional plugins,
+- bridging old code.
+
+### Rule #4: Middlewares: constructor injection is effectively singleton-like
+Most middleware instances are created once at app start.
+
+So:
+- Injecting **scoped** services into middleware **constructor** is wrong.
+- Instead, get scoped services inside `InvokeAsync(HttpContext context, RequestDelegate next)` via `context.RequestServices`.
+
+**Correct middleware pattern:**
+```csharp
+public sealed class MyMiddleware
+{
+    private readonly RequestDelegate _next;
+
+    public MyMiddleware(RequestDelegate next) => _next = next;
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        // Resolve scoped service per request:
+        var db = context.RequestServices.GetRequiredService<MyDbContext>();
+
+        // use db...
+        await _next(context);
+    }
+}
+```
+
+---
+
+## 6) Service resolution: what actually happens
+
+### 6.1 “Root provider” vs “request scope”
+- App starts → builds a root `IServiceProvider` (global)
+- Each HTTP request creates a **scope** (a child provider)
+- Scoped services live inside that request scope
+
+### 6.2 Where your controller gets services from
+Controllers are created per request and resolved from the **request scope**.
+So scoped services behave correctly inside controllers.
+
+### 6.3 Manual scope creation (when you really need it)
+**Use case:** background tasks (Hangfire, hosted services), where there is no HTTP request scope.
+
+```csharp
+public sealed class Worker : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+
+    public Worker(IServiceScopeFactory scopeFactory)
+        => _scopeFactory = scopeFactory;
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+
+            // do work with scoped services safely
+            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+        }
+    }
+}
+```
+
+**Coach warning:** Don’t do this inside hot paths if you can avoid it. Creating scopes is not “free”.
+
+---
+
+## 7) How to store per-request shared data safely
+
+### 7.1 Use `HttpContext.Items` for small data passing
+```csharp
+public static class HttpContextItemKeys
+{
+    public const string CorrelationId = "CorrelationId";
+}
+
+app.Use(async (context, next) =>
+{
+    context.Items[HttpContextItemKeys.CorrelationId] = Guid.NewGuid().ToString("N");
+    await next();
+});
+
+app.MapGet("/cid", (HttpContext context) =>
+    Results.Ok(context.Items[HttpContextItemKeys.CorrelationId]));
+```
+
+**Good for:** correlation id, tiny flags, computed values used by later middleware.
+
+### 7.2 Prefer scoped services for richer per-request state
+```csharp
+public interface IRequestContext
+{
+    string CorrelationId { get; set; }
+}
+
+public sealed class RequestContext : IRequestContext
+{
+    public string CorrelationId { get; set; } = "";
+}
+
+// registration
+builder.Services.AddScoped<IRequestContext, RequestContext>();
+```
+
+Then fill it early in middleware, use it later anywhere in the request.
+
+---
+
+## 8) Thread-safety (the real reason “shared variables” explode)
+
+Even scoped services can have concurrency problems if you:
+- start parallel tasks inside one request and mutate shared fields
+- use `Task.WhenAll` and write to shared lists without locking
+
+### Example: unsafe mutation
+```csharp
+public sealed class Collector
+{
+    private readonly List<string> _items = new();
+
+    public void Add(string item) => _items.Add(item); // not thread-safe
+}
+```
+
+If multiple tasks call `Add` at the same time, it can crash or corrupt.
+
+**Fix options:**
+- avoid parallel mutation
+- use `ConcurrentBag<T>` / `ConcurrentQueue<T>`
+- lock around shared mutation (careful)
+- design immutable results and merge
+
+---
+
+## 9) Choosing between Transient vs Scoped (decision table)
+
+| Scenario | Recommended lifetime | Why |
+|---|---:|---|
+| Uses `DbContext` or repositories | Scoped | must be consistent per request |
+| Holds per-request user data | Scoped | isolates per request |
+| Stateless helper (pure functions) | Transient | cheap and safe |
+| Expensive object but thread-safe and immutable | Singleton | reuse safely |
+| Caches data globally (thread-safe) | Singleton | intentionally shared |
+| Talks to external API via `HttpClient` | use `AddHttpClient` | manages handlers & lifetime correctly |
+
+**Important:** `HttpClient` itself can be injected from `IHttpClientFactory`. Don’t new it per request.
+
+---
+
+## 10) Common mistakes you should stop doing
+
+### Mistake A: singleton service with mutable fields
+- causes cross-request leaks
+- produces random user-mixing bugs
+
+### Mistake B: transient DbContext / repository
+- too many contexts created
+- inconsistent tracking inside request
+
+### Mistake C: resolving scoped service from singleton using root provider
+```csharp
+// WRONG: root provider resolving scoped
+var scoped = rootProvider.GetRequiredService<MyDbContext>();
+```
+This breaks scoping rules.
+
+### Mistake D: using static to “share” something
+`static` is basically a global singleton. If it’s mutable, it’s dangerous.
+
+---
+
+## 11) Quick “correct setup” example (Program.cs)
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+
+// DbContext: Scoped by default
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    // options.UseNpgsql(builder.Configuration.GetConnectionString("Default"));
+});
+
+// App services
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<IUserService, UserService>();
+
+// Stateless helpers
+builder.Services.AddTransient<IClock, SystemClock>();
+
+// Global cache (only if thread-safe)
+builder.Services.AddSingleton<ICacheKeyFactory, CacheKeyFactory>();
+
+var app = builder.Build();
+app.MapControllers();
+app.Run();
+```
+
+---
+
+## 12) Coach-level conclusion (what to do in your real code)
+
+1) If you ever store request/user-specific data in a field:
+   - **Don’t.**
+   - Read it from `HttpContext`, pass it as method parameters, or use a scoped request-context object.
+
+2) If your service touches DB or caching per request:
+   - default to **Scoped**.
+
+3) Use **Transient** only for stateless services.
+
+4) If you pick **Singleton**, you must prove:
+   - it is thread-safe,
+   - it does not store request state,
+   - and sharing is intentional.
+
+---
+
+## 13) Mini checklist for debugging “shared variable” issues
+
+- [ ] Do I have any `static` mutable fields?
+- [ ] Do I have any singleton services with fields that change?
+- [ ] Am I injecting scoped into singleton/middleware constructor?
+- [ ] Do I start parallel tasks that write to shared collections?
+- [ ] Am I caching without user/request keys?
+- [ ] Am I resolving services using `IServiceProvider` from the wrong scope?
+
+If you want, paste one real service + its registration lines, and I’ll tell you **exactly** which lifetime you should use and where state is leaking.
+
